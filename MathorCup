@@ -1,0 +1,130 @@
+import math
+import numpy as np
+from ReadData import ReadData
+
+Alpha = 0.78
+Beta = 0.025
+Gamma = 0.195
+
+""" Oder_label:['id' 'createTime' 'serviceFirstTime' 'serviceLastTime' 'serviceUnitTime' 'x' 'y' 'finished']
+    Aunt_label:['id' 'serviceScore' 'x' 'y' 'currentOrder' 'oldArriveTime']"""
+
+data=ReadData()
+# order的数据（加了一列finished）(没做：0)
+order_data=np.array(data.ReadOrder_csv()[1:,:],dtype = 'float64')
+order_finished=np.zeros(2304)
+order_data=np.c_[order_data,order_finished]
+print(order_data)
+
+# aunt的数据（加了一列currentOrder）(没开始做：-1)
+aunt_data=np.array(data.ReadAunt_csv()[1:,:],dtype = 'float64')
+aunt_currentOrder = np.ones(2795)*(-1)
+aunt_data=np.c_[aunt_data,aunt_currentOrder]
+aunt_old_arriveTime=np.zeros(2795)
+aunt_data=np.c_[aunt_data,aunt_old_arriveTime]
+print(aunt_data)
+
+def countDistance(x_orders,y_orders,x_aunt,y_aunt):
+    distance=math.sqrt(pow(x_orders-x_aunt,2)+pow(y_orders-y_aunt,2))
+    return distance
+
+class Aunt:
+
+    def __init__(self,id):
+        self.id=id
+
+    def getServiceScore(self):
+        return aunt_data[self.id,1]
+
+    def get_x(self):
+        position_x=aunt_data[self.id,2]
+        return position_x
+
+    def get_y(self):
+        position_y=aunt_data[self.id,3]
+        return position_y
+
+    def get_currentOrder(self):
+        currentOrder = aunt_data[self.id,4]
+        return currentOrder
+
+    def get_oldArriveTime(self):
+        return aunt_data[self.id,5]
+
+    def get_A(self):
+        return self.getServiceScore()
+
+    """判断距离的函数"""
+    # 判断第一个订单的距离
+    def judgeFristDistance(self,order_id):
+        order_x = order_data[order_id,5]
+        order_y = order_data[order_id,6]
+        return countDistance(order_x,order_y,self.get_x(),self.get_y())/1000
+
+    # 判断订单键的距离
+    def judgeOrderDistance(self,order_old_id,order_new_id):
+        order_old_x = order_data[order_old_id, 5]
+        order_old_y = order_data[order_old_id, 6]
+        order_new_x = order_data[order_new_id, 5]
+        order_new_y = order_data[order_new_id, 6]
+        return countDistance(order_old_x,order_old_y,order_new_x,order_new_y)/1000
+
+    # 计算每单的平均通行距离B
+    def count_B(self,order_id_list):
+        distance = self.judgeFristDistance(order_id_list[0])
+        for i in range(len(order_id_list)-1):
+            distance += self.judgeOrderDistance(order_id_list[i],order_id_list[i+1])
+        average_distance = distance/len(order_id_list)
+        return average_distance
+
+    """判断时间的函数"""
+    # 计算到达时间（其中order_old_id是-1的时候，代表没有开始做订单）
+    def countArriveTime(self,order_old_id,order_new_id):
+        # 准备做第一单
+        if order_old_id==-1:
+            arriveTime = order_data[order_new_id,2]
+        # 不是去做第一单
+        old_arriveTime = aunt_data[self.id,5]
+        old_untilTime = (order_data[order_old_id, 4])/60
+        movingTime = self.judgeOrderDistance(order_old_id,order_new_id)
+        arriveTime = old_arriveTime + old_untilTime + movingTime
+        return arriveTime
+
+    # 判断是否能在开始时间段内到达该订单位置(不能赶到：0)
+    def judgeTime(self,order_old_id,order_new_id):
+
+        if self.get_currentOrder()==-1:
+            return 1
+
+        order_old_untilTime = (order_data[order_old_id, 4])/60
+        order_old_arriveTime = aunt_data[self.id,5]
+        order_new_serviceFirstTime = order_data[order_new_id, 2]
+        order_new_serviceLastTime = order_data[order_new_id, 3]
+
+    # 判断是否应该做这个order
+    def judgeOrder(self, order_old_id,order_new_id):
+        # order已经做了
+        if order_data[order_new_id,7]==1:
+            return 0
+
+        # 不能赶到order的最晚开始时间
+        if not self.judgeTime(order_old_id,order_new_id):
+            return 0
+
+        pass
+
+    def count_C(self,order_id_list):
+        movingDistance = (self.count_B(order_id_list))*(len(order_id_list))-self.judgeFristDistance(order_id_list[0])
+        movingTime=(0.5+movingDistance/15)/(len(order_id_list))
+        return movingTime
+
+    def count_Aim(self,order_id_list):
+        A=self.get_A()
+        B=self.count_B(order_id_list)
+        C=self.count_C(order_id_list)
+        return Alpha * A - Beta * B - Gamma * C
+
+    # 走到新的订单处（更改当前的order信息）
+    def moveTo(self,order_new_id):
+        aunt_data[self.id,4]=order_new_id
+        return "Already Moved"
